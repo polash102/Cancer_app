@@ -1,5 +1,6 @@
 torch
 torchvision
-gradio
 transformers
+gradio==3.50.2
 Pillow
+numpy

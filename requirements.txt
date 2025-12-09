@@ -1,6 +1,17 @@
-torch
-torchvision
-transformers
+# ---- Core ML stack (CPU only) ----
+torch==2.1.0+cpu
+torchvision==0.16.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Transformers for CLIP
+transformers==4.36.2
+
+# Gradio UI
 gradio==3.50.2
-Pillow
-numpy
+
+# Image + array handling
+Pillow==10.1.0
+numpy==1.26.2
+
+# Optional but nice to keep installs stable
+typing_extensions==4.8.0

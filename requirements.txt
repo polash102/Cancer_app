@@ -1,6 +1,6 @@
-# PyTorch CPU
-torch==2.1.0
-torchvision==0.16.0
+# PyTorch (use a version that actually exists on Render’s index)
+torch==2.5.1
+torchvision==0.20.1
 
 # Transformers for CLIP
 transformers==4.36.2
@@ -16,5 +16,4 @@ numpy==1.26.2
 pydub==0.25.1
 pyaudioop==0.2.0
 
-# Optional but nice to keep installs stable
 typing_extensions==4.8.0

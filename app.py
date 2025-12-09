@@ -10,7 +10,14 @@ from PIL import Image
 from torchvision import transforms
 from transformers import CLIPProcessor, CLIPModel
 import gradio as gr
+import torch
 
+# Add after imports, before loading models
+torch.serialization.add_safe_globals([
+    'collections.OrderedDict',
+    'torch._utils._rebuild_parameter',
+    'torch._utils._rebuild_tensor_v2'
+])
 # -----------------------------------------------------
 # 1. Asyncio patch (same as your individual apps)
 # -----------------------------------------------------
@@ -563,8 +570,9 @@ DEFAULT_MODEL_CFG = dict(
 )
 
 def load_hybrid_model(ckpt_path: str):
-    raw_state = torch.load(ckpt_path, map_location=device)
-
+    # Load with weights_only=False for older models
+    raw_state = torch.load(ckpt_path, map_location=device, weights_only=False)
+    
     if isinstance(raw_state, dict) and "model_state_dict" in raw_state:
         state = raw_state["model_state_dict"]
         model_cfg_from_ckpt = raw_state.get("model_config", {})
@@ -609,7 +617,6 @@ def load_hybrid_model(ckpt_path: str):
         idx_to_class = {i: f"class_{i}" for i in range(num_classes_from_ckpt)}
 
     return model, idx_to_class
-
 # -----------------------------------------------------
 # 4. Cancer types registry (7 cancers)
 # -----------------------------------------------------

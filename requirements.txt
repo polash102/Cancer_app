@@ -1,8 +1,11 @@
-torch==2.1.2
-torchvision==0.16.2
+torch==2.4.1
+torchvision==0.19.1
 transformers==4.36.2
 gradio==4.12.0
 Pillow==10.1.0
 numpy==1.26.2
 pydub==0.25.1
 typing_extensions==4.8.0
+requests==2.31.0
+huggingface-hub==0.19.4
+safetensors==0.4.1

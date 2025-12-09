@@ -7,6 +7,4 @@ services:
     startCommand: python app.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.13.4
-      - key: PYTORCH_ENABLE_MPS_FALLBACK
-        value: "1"
+        value: 3.11.10

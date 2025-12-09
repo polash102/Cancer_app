@@ -7,5 +7,5 @@ typing_extensions==4.12.2
 requests==2.32.3
 huggingface-hub==0.26.5
 safetensors==0.4.5
-aiofiles==24.1.0
+aiofiles==23.1.0
 ftfy==6.1.1

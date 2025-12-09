@@ -1,20 +1,7 @@
 services:
   - type: web
     name: multi-cancer-classifier
-    env: python
     runtime: python
     plan: free
-    # Pin a Python 3.11 minor version that Render supports (use the one shown in dashboard if different)
-    pythonVersion: "3.11.6"
-    buildCommand: |
-      python -m pip install --upgrade pip
-      # Install CPU-only PyTorch wheels first from the official PyTorch index (avoids CUDA wheels and version resolution issues)
-      pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0" "torchvision==0.21.0"
-      # Then install the rest of your requirements
-      pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python app.py
-    envVars:
-      - key: DISABLE_POETRY
-        value: "1"
-      - key: POETRY_ACTIVE
-        value: "0"

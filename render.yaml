@@ -4,11 +4,12 @@ services:
     env: python
     runtime: python
     plan: free
+    # Recommended Python version — pick 3.11.x so PyTorch CPU wheels are available.
+    # You can also set this in the Render dashboard if this field is ignored.
+    pythonVersion: "3.11.6"
     buildCommand: |
       python -m pip install --upgrade pip
-      # Install CPU-only PyTorch wheels first (matching torchvision) to avoid dependency conflicts
-      pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0" "torchvision==0.21.0"
-      # Then install the rest of the requirements
+      # Install everything from requirements.txt (which includes the -f link for torch wheels)
       pip install -r requirements.txt
     startCommand: python app.py
     envVars:

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: multi-cancer-classifier
+    env: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: PYTORCH_ENABLE_MPS_FALLBACK
+        value: "1"

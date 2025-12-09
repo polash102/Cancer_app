@@ -6,9 +6,9 @@ services:
     plan: free
     buildCommand: |
       python -m pip install --upgrade pip
-      # Install CPU-only PyTorch wheels first (matching versions)
+      # Install CPU-only PyTorch wheels first (matching torchvision) to avoid dependency conflicts
       pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0" "torchvision==0.21.0"
-      # Then install the rest of the dependencies
+      # Then install the rest of the requirements
       pip install -r requirements.txt
     startCommand: python app.py
     envVars:

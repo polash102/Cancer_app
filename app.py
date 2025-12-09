@@ -2,6 +2,7 @@ import os
 import base64
 import asyncio
 from typing import Tuple, Dict, Any
+import threading
 
 import torch
 import torch.nn as nn
@@ -10,14 +11,16 @@ from PIL import Image
 from torchvision import transforms
 from transformers import CLIPProcessor, CLIPModel
 import gradio as gr
-import torch
 
-# Add after imports, before loading models
+# -------------------------------------------------------------------------
+# 0. Torch safe globals for older checkpoints (optional but kept as you had)
+# -------------------------------------------------------------------------
 torch.serialization.add_safe_globals([
-    'collections.OrderedDict',
-    'torch._utils._rebuild_parameter',
-    'torch._utils._rebuild_tensor_v2'
+    "collections.OrderedDict",
+    "torch._utils._rebuild_parameter",
+    "torch._utils._rebuild_tensor_v2",
 ])
+
 # -----------------------------------------------------
 # 1. Asyncio patch (same as your individual apps)
 # -----------------------------------------------------
@@ -220,7 +223,7 @@ class MaxViTBlock(nn.Module):
             drop_path=drop_path
         )
         self.block_attn = WindowAttention(dim, num_heads_block, attn_drop, proj_drop)
-        self.grid_attn  = GridAttention(dim, num_heads_grid, attn_drop, proj_drop)
+        self.grid_attn = GridAttention(dim, num_heads_grid, attn_drop, proj_drop)
         self.norm_ffn = nn.LayerNorm(dim)
         self.ffn = MLP(dim, mlp_ratio, drop=proj_drop)
         self.drop_path = DropPath(drop_path)
@@ -253,12 +256,12 @@ class MaxViTOncoXBackbone(nn.Module):
     def __init__(
         self,
         in_chans: int = 3,
-        dims: Tuple[int,int,int,int] = (64, 128, 256, 512),
-        depths: Tuple[int,int,int,int] = (2, 2, 3, 2),
-        window_sizes: Tuple[int,int,int,int] = (8, 8, 7, 7),
-        grid_sizes:   Tuple[int,int,int,int] = (8, 8, 7, 7),
-        heads_block:  Tuple[int,int,int,int] = (4, 4, 8, 8),
-        heads_grid:   Tuple[int,int,int,int] = (4, 4, 8, 8),
+        dims: Tuple[int, int, int, int] = (64, 128, 256, 512),
+        depths: Tuple[int, int, int, int] = (2, 2, 3, 2),
+        window_sizes: Tuple[int, int, int, int] = (8, 8, 7, 7),
+        grid_sizes: Tuple[int, int, int, int] = (8, 8, 7, 7),
+        heads_block: Tuple[int, int, int, int] = (4, 4, 8, 8),
+        heads_grid: Tuple[int, int, int, int] = (4, 4, 8, 8),
         drop_path_rate: float = 0.1,
         proj_drop: float = 0.0,
         attn_drop: float = 0.0,
@@ -339,12 +342,12 @@ class MaxViTOncoXBackbone(nn.Module):
     @staticmethod
     def _init_weights(m):
         if isinstance(m, (nn.Conv2d,)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if getattr(m, 'bias', None) is not None:
+            nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, (nn.Linear,)):
             nn.init.trunc_normal_(m.weight, std=0.02)
-            if getattr(m, 'bias', None) is not None:
+            if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d, nn.LayerNorm)):
             nn.init.ones_(m.weight)
@@ -408,7 +411,7 @@ class EfficientViTL1Backbone(nn.Module):
         in_chans=3,
         dims=(32, 64, 128, 256),
         depths=(1, 2, 3, 2),
-        drop_path_rate=0.05
+        drop_path_rate=0.05,
     ):
         super().__init__()
         c1, c2, c3, c4 = dims
@@ -422,7 +425,7 @@ class EfficientViTL1Backbone(nn.Module):
             nn.GELU(),
             nn.Conv2d(c1, c1, 3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(c1),
-            nn.GELU()
+            nn.GELU(),
         )
 
         def make_stage(in_ch, out_ch, depth, stride):
@@ -435,7 +438,7 @@ class EfficientViTL1Backbone(nn.Module):
                         out_ch,
                         mlp_ratio=2.0,
                         se_ratio=0.25,
-                        drop_path=dpr[i]
+                        drop_path=dpr[i],
                     )
                 )
                 i += 1
@@ -452,12 +455,12 @@ class EfficientViTL1Backbone(nn.Module):
     @staticmethod
     def _init_weights(m):
         if isinstance(m, (nn.Conv2d,)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if getattr(m, 'bias', None) is not None:
+            nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, (nn.Linear,)):
             nn.init.trunc_normal_(m.weight, std=0.02)
-            if getattr(m, 'bias', None) is not None:
+            if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
         elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d, nn.LayerNorm)):
             nn.init.ones_(m.weight)
@@ -484,7 +487,7 @@ class HybridMaxEffViT(nn.Module):
         eff_depths=(1, 2, 3, 2),
         drop_path_rate_max=0.05,
         drop_path_rate_eff=0.02,
-        dropout: float = 0.3
+        dropout: float = 0.3,
     ):
         super().__init__()
 
@@ -496,14 +499,14 @@ class HybridMaxEffViT(nn.Module):
             grid_sizes=(8, 8, 7, 7),
             heads_block=(4, 4, 8, 8),
             heads_grid=(4, 4, 8, 8),
-            drop_path_rate=drop_path_rate_max
+            drop_path_rate=drop_path_rate_max,
         )
 
         self.branch_eff = EfficientViTL1Backbone(
             in_chans=in_chans,
             dims=eff_dims,
             depths=eff_depths,
-            drop_path_rate=drop_path_rate_eff
+            drop_path_rate=drop_path_rate_eff,
         )
 
         d_max = self.branch_max.out_dim
@@ -554,7 +557,7 @@ class MaxEffFusionViT(HybridMaxEffViT):
 
 
 # -----------------------------------------------------
-# 3. Device & model loading utilities
+# 3. Device & model loading utilities (LAZY)
 # -----------------------------------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -569,10 +572,20 @@ DEFAULT_MODEL_CFG = dict(
     dropout=0.4,
 )
 
-def load_hybrid_model(ckpt_path: str):
-    # Load with weights_only=False for older models
+# Caches & locks
+_MODEL_CACHE: Dict[str, nn.Module] = {}
+_IDX_TO_CLASS_CACHE: Dict[str, Dict[int, str]] = {}
+_MODEL_LOCKS: Dict[str, threading.Lock] = {}
+_CLIP = {"model": None, "processor": None, "lock": threading.Lock()}
+
+
+def load_hybrid_model_from_checkpoint(ckpt_path: str):
+    if not os.path.exists(ckpt_path):
+        raise FileNotFoundError(f"Checkpoint file not found: {ckpt_path}")
+
+    # weights_only=False for compatibility with older saves
     raw_state = torch.load(ckpt_path, map_location=device, weights_only=False)
-    
+
     if isinstance(raw_state, dict) and "model_state_dict" in raw_state:
         state = raw_state["model_state_dict"]
         model_cfg_from_ckpt = raw_state.get("model_config", {})
@@ -617,6 +630,44 @@ def load_hybrid_model(ckpt_path: str):
         idx_to_class = {i: f"class_{i}" for i in range(num_classes_from_ckpt)}
 
     return model, idx_to_class
+
+
+def get_model_for_cancer(cancer_name: str):
+    """
+    Lazy loads and caches model + idx_to_class for given cancer_name.
+    Thread-safe via per-model locks to avoid double-loading.
+    """
+    if cancer_name in _MODEL_CACHE:
+        return _MODEL_CACHE[cancer_name], _IDX_TO_CLASS_CACHE[cancer_name]
+
+    lock = _MODEL_LOCKS.setdefault(cancer_name, threading.Lock())
+    with lock:
+        if cancer_name in _MODEL_CACHE:
+            return _MODEL_CACHE[cancer_name], _IDX_TO_CLASS_CACHE[cancer_name]
+
+        cfg = CANCER_TYPES.get(cancer_name)
+        if cfg is None:
+            raise ValueError(f"Unknown cancer type: {cancer_name}")
+
+        ckpt_path = cfg["ckpt"]
+        model, idx_to_class = load_hybrid_model_from_checkpoint(ckpt_path)
+        _MODEL_CACHE[cancer_name] = model
+        _IDX_TO_CLASS_CACHE[cancer_name] = idx_to_class
+        return model, idx_to_class
+
+
+def get_clip():
+    with _CLIP["lock"]:
+        if _CLIP["model"] is None:
+            clip_model_name = "openai/clip-vit-base-patch32"
+            clip_model = CLIPModel.from_pretrained(clip_model_name).to(device)
+            clip_processor = CLIPProcessor.from_pretrained(clip_model_name)
+            clip_model.eval()
+            _CLIP["model"] = clip_model
+            _CLIP["processor"] = clip_processor
+    return _CLIP["model"], _CLIP["processor"]
+
+
 # -----------------------------------------------------
 # 4. Cancer types registry (7 cancers)
 # -----------------------------------------------------
@@ -651,25 +702,9 @@ CANCER_TYPES = {
     },
 }
 
-print("🔁 Loading all cancer models...")
-MODELS: Dict[str, Any] = {}
-IDX_TO_CLASS: Dict[str, Dict[int, str]] = {}
-for cancer_name, cfg in CANCER_TYPES.items():
-    print(f"  ➜ Loading model for {cancer_name} from {cfg['ckpt']} ...")
-    model_c, idx2c = load_hybrid_model(cfg["ckpt"])
-    MODELS[cancer_name] = model_c
-    IDX_TO_CLASS[cancer_name] = idx2c
-
-print("✅ All cancer models loaded.")
-
 # -----------------------------------------------------
-# 5. Shared CLIP model + per-cancer CLIP config
+# 5. Shared CLIP config (model is lazy-loaded)
 # -----------------------------------------------------
-clip_model_name = "openai/clip-vit-base-patch32"
-clip_model = CLIPModel.from_pretrained(clip_model_name).to(device)
-clip_processor = CLIPProcessor.from_pretrained(clip_model_name)
-clip_model.eval()
-
 CLIP_CONFIG = {
     "Brain (MRI)": {
         "texts": [
@@ -729,20 +764,22 @@ CLIP_CONFIG = {
     },
 }
 
+
 def clip_gate(image: Image.Image, cancer_type: str):
+    model, processor = get_clip()
     cfg = CLIP_CONFIG[cancer_type]
     texts = cfg["texts"]
     threshold = cfg["threshold"]
 
-    inputs = clip_processor(
+    inputs = processor(
         text=texts,
         images=image,
         return_tensors="pt",
-        padding=True
+        padding=True,
     ).to(device)
 
     with torch.no_grad():
-        outputs = clip_model(**inputs)
+        outputs = model(**inputs)
         image_embeds = outputs.image_embeds
         text_embeds = outputs.text_embeds
 
@@ -756,20 +793,27 @@ def clip_gate(image: Image.Image, cancer_type: str):
     return is_ok, max_sim, threshold
 
 
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    ),
-])
+# -----------------------------------------------------
+# 6. Preprocessing & prediction
+# -----------------------------------------------------
+transform = transforms.Compose(
+    [
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+    ]
+)
+
 
 def preprocess_image(img: Image.Image) -> torch.Tensor:
     img = img.convert("RGB")
     x = transform(img)
     x = x.unsqueeze(0)
     return x.to(device)
+
 
 DISCLAIMER = (
     "⚠️ **Research disclaimer**\n"
@@ -781,12 +825,17 @@ DISCLAIMER = (
 
 LOW_CONFIDENCE_THRESHOLD = 0.55
 
+
 def predict_multicancer(image: Image.Image, cancer_type: str):
     if image is None:
         return {}, "⚠️ No image provided.", DISCLAIMER
 
-    # 1) CLIP gate
-    is_ok, sim, thr = clip_gate(image, cancer_type)
+    # 1) CLIP gate (lazy loads CLIP)
+    try:
+        is_ok, sim, thr = clip_gate(image, cancer_type)
+    except Exception as e:
+        return {}, f"🚫 CLIP gate failed: {e}", DISCLAIMER
+
     if not is_ok:
         rejection_text = (
             f"🚫 **Input rejected for {cancer_type} model**\n\n"
@@ -797,9 +846,13 @@ def predict_multicancer(image: Image.Image, cancer_type: str):
         )
         return {}, rejection_text, DISCLAIMER
 
-    # 2) Run model
-    model = MODELS[cancer_type]
-    idx_to_class = IDX_TO_CLASS[cancer_type]
+    # 2) Load the requested classifier model lazily
+    try:
+        model, idx_to_class = get_model_for_cancer(cancer_type)
+    except FileNotFoundError as e:
+        return {}, f"🚫 Model checkpoint missing: {e}. Place the checkpoint in the repo or configure an external URL.", DISCLAIMER
+    except Exception as e:
+        return {}, f"🚫 Model loading failed: {e}", DISCLAIMER
 
     x = preprocess_image(image)
     with torch.no_grad():
@@ -831,8 +884,9 @@ def predict_multicancer(image: Image.Image, cancer_type: str):
 
     return prob_dict, summary, DISCLAIMER
 
+
 # -----------------------------------------------------
-# 6. Doctor assistant (symptom Q&A – research only)
+# 7. Doctor assistant (symptom Q&A – research only)
 # -----------------------------------------------------
 def doctor_assistant(symptoms: str, age: str, gender: str, focus_cancer: str):
     if not symptoms.strip():
@@ -891,12 +945,14 @@ def doctor_assistant(symptoms: str, age: str, gender: str, focus_cancer: str):
 
     return base + cancer_mention + red_flags + lifestyle + home_remedy + safety
 
+
 # -----------------------------------------------------
-# 7. UI helpers: background image, CSS, login overlay
+# 8. UI helpers: background image, CSS, login overlay
 # -----------------------------------------------------
 def load_base64_image(path: str) -> str:
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
+
 
 BG64 = load_base64_image("cancer_bg.jpg")
 
@@ -1084,7 +1140,6 @@ MEDICAL_CSS = f"""
     100% {{ transform: translateY(0px); }}
   }}
 
-  /* Simple draggable JS hook */
   @media (pointer: coarse) {{
     .doctor-bot {{
       width: 76px;
@@ -1158,17 +1213,19 @@ MEDICAL_CSS = f"""
 title_text = "🧬 Multi-Cancer Imaging Classifier – Research Prototype"
 
 # -----------------------------------------------------
-# 8. Login logic (guest / user / admin)
+# 9. Login logic (guest / user / admin)
 # -----------------------------------------------------
 USER_CREDENTIALS = {
-    "demo_user": "user123",     # change or extend for demo
+    "demo_user": "user123",  # change or extend for demo
 }
 ADMIN_CREDENTIALS = {
-    "admin": "admin123",        # change for demo
+    "admin": "admin123",  # change for demo
 }
+
 
 def login_guest():
     return "guest", gr.update(visible=False), "🟢 Logged in as **Guest** (no account)."
+
 
 def login_user(username, password):
     if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
@@ -1178,6 +1235,7 @@ def login_user(username, password):
             "🔴 Invalid **user** credentials. Try again or continue as guest."
         )
 
+
 def login_admin(username, password):
     if username in ADMIN_CREDENTIALS and ADMIN_CREDENTIALS[username] == password:
         return "admin", gr.update(visible=False), f"🟣 Logged in as **Admin: {username}**"
@@ -1186,8 +1244,9 @@ def login_admin(username, password):
             "🔴 Invalid **admin** credentials. Try again or continue as guest."
         )
 
+
 # -----------------------------------------------------
-# 9. Build Gradio UI
+# 10. Build Gradio UI
 # -----------------------------------------------------
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     # Global CSS + doctor-bot
@@ -1376,7 +1435,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
                                 "Tell me your symptoms and worries in a few sentences. "
                                 "I will respond with **general guidance only**."
                             ),
-                            elem_classes="app-report"
+                            elem_classes="app-report",
                         )
 
                 ask_btn.click(
@@ -1469,16 +1528,19 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         # ----------------- FOOTER: credits + emoji tech stack -----------------
         gr.Markdown(
             """
-            ---
+            ---  
             **Made by Md. Saymon Hosen Polash** 🧑‍💻🧠  
 
             Tech stack: 🐍 Python · 🔥 PyTorch · 🧬 CLIP · 🌐 Gradio · ☁️ Hugging Face  
 
-            <!-- Only emojis for how app is made -->
             🧠📷 ➕ 🐍📦 ➕ 🔥🧮 ➕ 🧬🤖 ➕ ☁️🚀
             """,
         )
 
+# -----------------------------------------------------
+# 11. Main
+# -----------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "7860"))
+    print("Starting Gradio app (models & CLIP will load lazily on first request)...")
     demo.launch(server_name="0.0.0.0", server_port=port)

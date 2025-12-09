@@ -2,8 +2,8 @@ torch==2.5.1
 torchvision==0.21.0
 transformers==4.36.2
 gradio==4.12.0
-Pillow==10.1.0
-numpy==1.26.2
+Pillow==10.4.0
+numpy==1.26.4
 pydub==0.25.1
 typing_extensions==4.8.0
 requests==2.31.0
